@@ -52,6 +52,11 @@ public class CompteHelper {
 
         // Mapper createCompteRequest en Compte
         Compte compte = compteMapper.toEntity(request, client);
+        
+        // Générer le numéro de compte automatiquement si nécessaire
+        // Format: CE- + 8 chiffres aléatoires
+        String generatedNumero = "CE-" + (int)(Math.random() * 90000000 + 10000000);
+        compte.setNumero(generatedNumero);
 
         // Sauvegarder le compte
         compte = compteRepository.save(compte);

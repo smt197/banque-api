@@ -19,7 +19,6 @@ public class CompteMapper {
      */
     public Compte toEntity(CreateCompteRequest request, Client client) {
         Compte compte = new Compte();
-        compte.setNumero(request.getNumCompte());
         compte.setSolde(request.getSolde());
         compte.setDateCreation(request.getDateCreation());
         compte.setClient(client);
