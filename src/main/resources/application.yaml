@@ -1,0 +1,20 @@
+spring:
+  application:
+    name: banque-api
+  datasource:
+    url: jdbc:postgresql://localhost:5432/banquedb
+    driver-class-name: org.postgresql.Driver
+    username: postgres
+    password: Serigne197
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    show-sql: true
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+
+springdoc:
+  api-doc:
+    path: /api-doc
+
+server:
+  port: 8081
