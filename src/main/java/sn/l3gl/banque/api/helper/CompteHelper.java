@@ -2,6 +2,7 @@ package sn.l3gl.banque.api.helper;
 
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import sn.l3gl.banque.api.dto.*;
 import sn.l3gl.banque.api.exception.BusinessException;
 import sn.l3gl.banque.api.exception.ResourceNotFoundException;
@@ -12,73 +13,67 @@ import sn.l3gl.banque.api.model.Client;
 import sn.l3gl.banque.api.model.Compte;
 import sn.l3gl.banque.api.model.Transaction;
 import sn.l3gl.banque.api.model.Type;
-import sn.l3gl.banque.api.repository.ClientRepository;
-import sn.l3gl.banque.api.repository.CompteRepository;
-import sn.l3gl.banque.api.repository.TransactionRepository;
-import sn.l3gl.banque.api.repository.TypeRepository;
+import sn.l3gl.banque.api.service.ClientService;
+import sn.l3gl.banque.api.service.CompteService;
+import sn.l3gl.banque.api.service.TransactionService;
+import sn.l3gl.banque.api.service.TypeService;
 
 import java.time.LocalDate;
+import java.util.List;
+import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class CompteHelper {
 
-    private final CompteRepository compteRepository;
-    private final ClientRepository clientRepository;
-    private final TransactionRepository transactionRepository;
-    private final TypeRepository typeRepository;
+    private final CompteService compteService;
+    private final ClientService clientService;
+    private final TransactionService transactionService;
+    private final TypeService typeService;
     private final CompteMapper compteMapper;
     private final ClientMapper clientMapper;
     private final TransactionMapper transactionMapper;
 
     /**
      * Orchestrer la création d'un compte bancaire.
-     * Si clientId != 0, on cherche le client existant, sinon on crée un nouveau client.
-     * On sauvegarde le compte et on enregistre la transaction initiale.
      */
+    @Transactional
     public CompteDetailResponse saveCompte(CreateCompteRequest request) {
         Client client;
 
-        // Si id != null on va chercher le Client, s'il n'existe pas on leve une exception
-        if (request.getClientId() > 0) {
-            client = clientRepository.findById(request.getClientId())
+        if (request instanceof CreateCompteExistingRequest existingRequest) {
+            client = clientService.findById(existingRequest.getClientId())
                     .orElseThrow(() -> new ResourceNotFoundException(
-                            "Client avec l'id " + request.getClientId() + " introuvable !"));
+                            "Client avec l'id " + existingRequest.getClientId() + " introuvable !"));
+        } else if (request instanceof CreateCompteNewRequest newRequest) {
+            client = clientMapper.toEntity(newRequest);
+            client = clientService.save(client);
         } else {
-            // Mapper createCompteRequest en nouveau Client
-            client = clientMapper.toEntity(request);
-            client = clientRepository.save(client);
+            throw new BusinessException("Type de requête de création de compte non supporté !");
         }
 
-        // Mapper createCompteRequest en Compte
         Compte compte = compteMapper.toEntity(request, client);
-        
-        // Générer le numéro de compte automatiquement si nécessaire
-        // Format: CE- + 8 chiffres aléatoires
         String generatedNumero = "CE-" + (int)(Math.random() * 90000000 + 10000000);
         compte.setNumero(generatedNumero);
+        compte = compteService.save(compte);
 
-        // Sauvegarder le compte
-        compte = compteRepository.save(compte);
-
-        // Enregistrer la transaction initiale (dépôt)
         Type depotType = getOrCreateType("DEPOT");
         Transaction transaction = new Transaction();
         transaction.setMontant(request.getSolde());
         transaction.setDate(request.getDateCreation());
         transaction.setType(depotType);
         transaction.setCompte(compte);
-        transactionRepository.save(transaction);
+        transactionService.save(transaction);
 
-        // Retourner les infos du compte créé
         return compteMapper.toDetailResponse(compte);
     }
 
     /**
-     * Orchestrer une transaction (dépôt ou retrait).
+     * Effectuer une transaction.
      */
+    @Transactional
     public TransactionResponse handleTransaction(String numeroCompte, TransactionRequest request) {
-        Compte compte = compteRepository.findByNumero(numeroCompte)
+        Compte compte = compteService.findByNumero(numeroCompte)
                 .orElseThrow(() -> new ResourceNotFoundException(
                         "Compte avec le numéro '" + numeroCompte + "' introuvable !"));
 
@@ -109,30 +104,79 @@ public class CompteHelper {
             throw new BusinessException("Type de transaction invalide ! Utilisez 'DEPOT' ou 'RETRAIT'.");
         }
 
-        // Sauvegarder le nouveau solde
-        compteRepository.save(compte);
+        compteService.save(compte);
 
-        // Enregistrer la transaction
         Type type = getOrCreateType(typeStr);
         Transaction transaction = new Transaction();
         transaction.setMontant(request.getMontant());
         transaction.setDate(LocalDate.now());
         transaction.setType(type);
         transaction.setCompte(compte);
-        transaction = transactionRepository.save(transaction);
+        transaction = transactionService.save(transaction);
 
         return transactionMapper.toResponse(transaction, compte);
     }
 
     /**
-     * Récupérer ou créer un type de transaction (DEPOT / RETRAIT)
+     * Rechercher un compte par son numéro.
      */
+    public CompteDetailResponse rechercherParNumero(String numero) {
+        Compte compte = compteService.findByNumero(numero)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Compte avec le numéro '" + numero + "' introuvable !"));
+        return compteMapper.toDetailResponse(compte);
+    }
+
+    /**
+     * Lister les comptes par client.
+     */
+    public List<CompteResponse> listerComptesParClient(Long clientId) {
+        clientService.findById(clientId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Client avec l'id " + clientId + " introuvable !"));
+
+        return compteService.findByClientId(clientId)
+                .stream()
+                .map(compteMapper::toResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Lister tous les comptes.
+     */
+    public List<CompteDetailResponse> listerTousLesComptes() {
+        return compteService.findAll()
+                .stream()
+                .map(compteMapper::toDetailResponse)
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Consulter une transaction.
+     */
+    public TransactionResponse consulterTransaction(String numeroCompte, Long transactionId) {
+        Compte compte = compteService.findByNumero(numeroCompte)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Compte avec le numéro '" + numeroCompte + "' introuvable !"));
+
+        Transaction transaction = transactionService.findById(transactionId)
+                .orElseThrow(() -> new ResourceNotFoundException(
+                        "Transaction avec l'id " + transactionId + " introuvable !"));
+
+        if (transaction.getCompte().getId() != compte.getId()) {
+            throw new ResourceNotFoundException(
+                    "Transaction " + transactionId + " n'appartient pas au compte '" + numeroCompte + "' !");
+        }
+
+        return transactionMapper.toResponse(transaction, compte);
+    }
+
     private Type getOrCreateType(String libelle) {
-        return typeRepository.findByLibelle(libelle)
+        return typeService.findByLibelle(libelle)
                 .orElseGet(() -> {
                     Type newType = new Type();
                     newType.setLibelle(libelle);
-                    return typeRepository.save(newType);
+                    return typeService.save(newType);
                 });
     }
 }

@@ -5,7 +5,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import sn.l3gl.banque.api.dto.*;
-import sn.l3gl.banque.api.service.CompteService;
+import sn.l3gl.banque.api.helper.CompteHelper;
 
 import java.net.URI;
 import java.util.List;
@@ -15,72 +15,61 @@ import java.util.List;
 @RequiredArgsConstructor
 public class CompteController {
 
-    private final CompteService compteService;
+    private final CompteHelper compteHelper;
 
-    /**
-     * Créer un nouveau compte bancaire
-     * POST /api/comptes
-     */
     @PostMapping
-    public ResponseEntity<CompteDetailResponse> creerCompte(@Valid @RequestBody CreateCompteRequest request) {
-        CompteDetailResponse response = compteService.creerCompte(request);
+    public ResponseEntity<CompteDetailResponse> creerCompte(
+            @io.swagger.v3.oas.annotations.parameters.RequestBody(
+                    description = "Détails de la création du compte (Client existant ou nouveau)",
+                    required = true,
+                    content = @io.swagger.v3.oas.annotations.media.Content(
+                            mediaType = "application/json",
+                            schema = @io.swagger.v3.oas.annotations.media.Schema(oneOf = {
+                                    CreateCompteExistingRequest.class, CreateCompteNewRequest.class }),
+                            examples = {
+                                    @io.swagger.v3.oas.annotations.media.ExampleObject(name = "Nouveau Client", summary = "Création avec un nouveau client", value = "{\"type\": \"NEW\", \"solde\": 50000, \"dateCreation\": \"2026-05-05\", \"prenom\": \"Jean\", \"nom\": \"Dupont\", \"telephone\": \"771234567\", \"adresse\": \"Dakar\", \"numPiece\": \"123456789\", \"dateNaissance\": \"1990-01-01\"}"),
+                                    @io.swagger.v3.oas.annotations.media.ExampleObject(name = "Client Existant", summary = "Création avec un client existant", value = "{\"type\": \"EXISTING\", \"solde\": 50000, \"dateCreation\": \"2026-05-05\", \"clientId\": 1}")
+                            }
+                    )
+            )
+            @Valid @RequestBody CreateCompteRequest request) {
+        CompteDetailResponse response = compteHelper.saveCompte(request);
         URI uri = URI.create("/api/comptes/" + response.getNumero());
         return ResponseEntity.created(uri).body(response);
     }
 
-    /**
-     * Rechercher un compte par son numéro (retourne infos compte + client)
-     * GET /api/comptes/{numero}
-     */
     @GetMapping("/{numero}")
     public ResponseEntity<CompteDetailResponse> rechercherParNumero(@PathVariable String numero) {
-        CompteDetailResponse response = compteService.rechercherParNumero(numero);
+        CompteDetailResponse response = compteHelper.rechercherParNumero(numero);
         return ResponseEntity.ok(response);
     }
 
-    /**
-     * Lister tous les comptes
-     * GET /api/comptes
-     */
     @GetMapping
     public ResponseEntity<List<CompteDetailResponse>> listerTousLesComptes() {
-        List<CompteDetailResponse> comptes = compteService.listerTousLesComptes();
+        List<CompteDetailResponse> comptes = compteHelper.listerTousLesComptes();
         return ResponseEntity.ok(comptes);
     }
 
-    /**
-     * Lister les comptes d'un client (retourne seulement les infos des comptes)
-     * GET /api/comptes/client/{clientId}
-     */
     @GetMapping("/client/{clientId}")
     public ResponseEntity<List<CompteResponse>> listerComptesParClient(@PathVariable Long clientId) {
-        List<CompteResponse> comptes = compteService.listerComptesParClient(clientId);
+        List<CompteResponse> comptes = compteHelper.listerComptesParClient(clientId);
         return ResponseEntity.ok(comptes);
     }
 
-    /**
-     * Effectuer une transaction (dépôt ou retrait) sur un compte
-     * POST /api/comptes/{numero}/transactions
-     * Retourne 201 Created avec l'URL de la transaction
-     */
     @PostMapping("/{numero}/transactions")
     public ResponseEntity<TransactionResponse> effectuerTransaction(
             @PathVariable String numero,
             @Valid @RequestBody TransactionRequest request) {
-        TransactionResponse response = compteService.effectuerTransaction(numero, request);
+        TransactionResponse response = compteHelper.handleTransaction(numero, request);
         URI uri = URI.create("/api/comptes/" + numero + "/transactions/" + response.getId());
         return ResponseEntity.created(uri).body(response);
     }
 
-    /**
-     * Consulter une transaction par son ID
-     * GET /api/comptes/{numero}/transactions/{transactionId}
-     */
     @GetMapping("/{numero}/transactions/{transactionId}")
     public ResponseEntity<TransactionResponse> consulterTransaction(
             @PathVariable String numero,
             @PathVariable Long transactionId) {
-        TransactionResponse response = compteService.consulterTransaction(numero, transactionId);
+        TransactionResponse response = compteHelper.consulterTransaction(numero, transactionId);
         return ResponseEntity.ok(response);
     }
 }

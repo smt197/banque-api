@@ -2,16 +2,16 @@ package sn.l3gl.banque.api.mapper;
 
 import org.springframework.stereotype.Component;
 import sn.l3gl.banque.api.dto.ClientResponse;
-import sn.l3gl.banque.api.dto.CreateCompteRequest;
+import sn.l3gl.banque.api.dto.CreateCompteNewRequest;
 import sn.l3gl.banque.api.model.Client;
 
 @Component
 public class ClientMapper {
 
     /**
-     * Mapper CreateCompteRequest vers Client (nouveau client)
+     * Mapper CreateCompteNewRequest vers Client (nouveau client)
      */
-    public Client toEntity(CreateCompteRequest request) {
+    public Client toEntity(CreateCompteNewRequest request) {
         Client client = new Client();
         client.setNumPiece(request.getNumPiece());
         client.setPrenom(request.getPrenom());
